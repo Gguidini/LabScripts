@@ -1,0 +1,80 @@
+Tabela UniprotIndex
+Columns: 
+Accession LinkId AttributeType 
+==================================================
+Tabela PFAMreference
+Columns: 
+pfam_accession pfam_domainname pfam_domaindescription Sequence_GatheringCutOff Domain_GatheringCutOff Sequence_TrustedCutOff Domain_TrustedCutOff Sequence_NoiseCutOff Domain_NoiseCutOff 
+==================================================
+Tabela TaxonomyIndex
+Columns: 
+NCBITaxonomyAccession TaxonomyValue 
+==================================================
+Tabela BlastDbase
+Columns: 
+TrinityID FullAccession GINumber UniprotSearchString QueryStart QueryEnd HitStart HitEnd PercentIdentity Evalue BitScore DatabaseSource 
+==================================================
+Tabela HMMERDbase
+Columns: 
+QueryProtID pfam_id HMMERDomain HMMERTDomainDescription QueryStartAlign QueryEndAlign PFAMStartAlign PFAMEndAlign FullSeqEvalue ThisDomainEvalue FullSeqScore FullDomainScore 
+==================================================
+Tabela MaxQuantGFFtoTrinity
+Columns: 
+MaxQuantQueryID MaxQuantQueryParentID MaxQuantProteinMatchStart MaxQuantProteinMatchend MaxQuantStrand MaxQuantTrinityMatchID MaxQuantscoreFKPMValue MaxQuantPeptideValue MaxQuantPeptideScore MaxQuantExonValue 
+==================================================
+Tabela SignalP
+Columns: 
+query_prot_id start end score prediction 
+==================================================
+Tabela Transcript
+Columns: 
+gene_id transcript_id annotation sequence scaffold lend rend orient 
+==================================================
+Tabela ORF
+Columns: 
+orf_id transcript_id length strand lend rend peptide 
+==================================================
+Tabela tmhmm
+Columns: 
+queryprotid Score PredHel Topology 
+==================================================
+Tabela eggNOGIndex
+Columns: 
+eggNOGIndexTerm eggNOGDescriptionValue 
+==================================================
+Tabela go
+Columns: 
+id name namespace def 
+==================================================
+Tabela pfam2go
+Columns: 
+pfam_acc go_id 
+==================================================
+Tabela Samples
+Columns: 
+sample_id sample_name 
+==================================================
+Tabela Replicates
+Columns: 
+replicate_id replicate_name sample_id 
+==================================================
+Tabela Expression
+Columns: 
+feature_name feature_type replicate_id frag_count fpkm 
+==================================================
+Tabela Diff_expression
+Columns: 
+sample_id_A sample_id_B feature_name feature_type log_avg_expr log_fold_change p_value fdr 
+==================================================
+Tabela ExprClusterAnalyses
+Columns: 
+cluster_analysis_id cluster_analysis_group cluster_analysis_name 
+==================================================
+Tabela ExprClusters
+Columns: 
+cluster_analysis_id expr_cluster_id feature_name 
+==================================================
+Tabela RNAMMERdata
+Columns: 
+TrinityQuerySequence Featurestart Featureend Featurescore FeatureStrand FeatureFrame Featureprediction 
+==================================================

@@ -1,35 +1,29 @@
 import pandas as pd
-import matplotlib.pyplot as plt
 import sqlite3
 from sqlite3 import Error
 
 import matplotlib.pyplot as plt; plt.rcdefaults()
 import numpy as np
 import matplotlib.pyplot as plt
- 
- 
-def plotBarGraph(labels, results, run):
-    """ Plots horizontal bar graph of labels vs results """
-    y_pos = np.arange(len(labels))
-    plt.barh(y_pos, results, align='center', alpha=0.5)
-    plt.yticks(y_pos, labels)
-    plt.xlabel('Quantidades Encontradas')
-    plt.title("GO's de toxinas anotadas para {}".format(run))
-    plt.show()
 
+#import seaborn as sns
+def plotGraph(x, n):
+    ax = x.plot(kind='barh', title='GOs de toxinas anotadas para {}'.format(n), figsize=(6, 3.5))
 
-def clearData(results, labels):
-    """ Removes empty values from lists, returning to clean lists"""
-    # find empty values and mark them
-    for i in range(len(results)):
-        if results[i].size == 0:
-            results[i] = 0
-            labels[i] = ""
-        else:
-            results[i] = results[i][0]
+    return ax
 
-    # remove marked values from both lists
-    return(list(filter(lambda a: a != 0, results)), list(filter(lambda a: a != "", labels)))
+def anotateNumbers(ax):
+    # set individual bar lables using above list
+    for i in ax.patches:
+        # get_width pulls left or right; get_y pushes up or down
+        ax.text(i.get_width()+ 1, i.get_y()+.1, \
+                str(int((i.get_width()))), fontsize=8, color='dimgrey')
+
+    # invert for largest on top 
+    ax.invert_yaxis()
+
+    # invert for largest on top 
+    ax.invert_yaxis()
 
 def connect(filename):
     """ Connects to SQLite DB specified in filename."""
@@ -54,21 +48,39 @@ def showTables(conn):
         print(df.head())
         print("="*50 + "\n")
 
-File = '/home/gguidini/Downloads/Trinotate.sqlite' # input("Path to sqlite file\n")
+def getTables(conns, names, GOs):
+    if names != None and len(conns) != len(names):
+        print("Names and connections not the same length!")
+        return None
+
+    r = pd.DataFrame(index=['GO:'+go for go in GOs])
+    for i, c in enumerate(conns):
+        df = pd.read_sql_query("SELECT id FROM final;", c)
+        df = df['id'].value_counts().filter(items=['GO:'+go for go in GOs])
+        print(df)
+        print('='*150)
+        r[names[i]] = df
+
+    return r
+
+#Files = input("Path to sqlite files (comma separated)\n").split(',')
+#Files = list(map(str.strip, Files))
+n = input(u"Qual a espécie?\n")
+
 GOs = ['0046872', '0004888', '0019870', '0008200', '0008061', '0003950', '0005509', '0004568', '0030550', '0004872', '0019855', '0008092', '0005525', '0016881', '0004622', '0005515']
-conn = connect(File)
+conns = []
+for f in Files:
+    conns.append(connect(f))
+
 
 # Get the table
-df = pd.read_sql_query("SELECT DISTINCT * FROM final;", conn)
-results = []
-labels = []
-# extract index of rows that contain targets
-for go in GOs:
-    results.append(df[df['id'] == ('GO:'+go)]['id'].value_counts().values)
-    labels.append('GO:'+go)
-
-(results, labels) = clearData(results, labels)
-plotBarGraph(labels, results, "Escorpião, par 1")
+df = getTables(conns, ['Aranha'], GOs)
+#print(df.size)
+ax = plotGraph(df, n)
+anotateNumbers(ax)
+plt.tight_layout()
+plt.legend(loc='best')
+plt.show()
 
 
 
