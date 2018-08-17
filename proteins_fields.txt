@@ -1,0 +1,38 @@
+Protein {
+    name: NOT IN THE DB
+
+    Uniprot_accession:
+    Uniprot_attributeType:
+
+    Pfam_accession:
+    Pfam_domainName:
+    Pfam_domainDescription:
+
+    NCBI_taxonomyAccession:
+    NCBI_taxonomyValue: 
+
+    Blast_percentIdentity:
+    Blast_Evalue:
+    Blast_fullAccession:
+    Blast_GINumber:
+
+    HMMER_domain:
+    HMMER_domainDescription:
+    HMMER_fullSqeEvalue:
+
+    transcript_sequence:
+
+    orf_peptide:
+
+    EggNOG_indexTerm:
+    EggNOG_descriptionValue:
+
+    GO_id:
+    GO_name:
+    GO_namespace:
+    GO_def:
+
+    has_scorpion:
+    has_wasp:
+    has_spider:
+}

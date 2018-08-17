@@ -5,11 +5,13 @@ from sqlite3 import Error
 import matplotlib.pyplot as plt; plt.rcdefaults()
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 
 #import seaborn as sns
 def plotGraph(x, n):
     ax = x.plot(kind='barh', title='GOs de toxinas anotadas para {}'.format(n), figsize=(6, 3.5))
-
+    plt.tight_layout()
+    plt.legend(loc='best')
     return ax
 
 def anotateNumbers(ax):
@@ -48,12 +50,11 @@ def showTables(conn):
         print(df.head())
         print("="*50 + "\n")
 
-def getTables(conns, names, GOs):
+def getTables(conns, names, GOs, r):
     if names != None and len(conns) != len(names):
         print("Names and connections not the same length!")
         return None
 
-    r = pd.DataFrame(index=['GO:'+go for go in GOs])
     for i, c in enumerate(conns):
         df = pd.read_sql_query("SELECT id FROM final;", c)
         df = df['id'].value_counts().filter(items=['GO:'+go for go in GOs])
@@ -63,24 +64,45 @@ def getTables(conns, names, GOs):
 
     return r
 
-#Files = input("Path to sqlite files (comma separated)\n").split(',')
-#Files = list(map(str.strip, Files))
-n = input(u"Qual a espécie?\n")
+def mergeColumn(df, index, new_name):
+    x = df[index[0]]
+    for i in index[1:]:
+        x += df[i]
+    df.drop(columns=index)
+    df[new_name] = (x/3)
+    return df
 
+
+showTables(connect('/home/gguidini/Downloads/SQLite/Trinotate_scorpio_2.sqlite'))
+exit(0)
+# Files = input("Path to sqlite files (comma separated)\n").split(',')
+# Files = list(map(str.strip, Files))
+Files = ['/home/gguidini/Downloads/SQLite/Trinotate_scorpio_1.sqlite',
+         '/home/gguidini/Downloads/SQLite/Trinotate_scorpio_2.sqlite',
+         '/home/gguidini/Downloads/SQLite/Trinotate_scorpio_3.sqlite',
+         '/home/gguidini/Downloads/SQLite/Trinotate_wasp_1.sqlite',
+         '/home/gguidini/Downloads/SQLite/Trinotate_wasp_2.sqlite',
+         '/home/gguidini/Downloads/SQLite/Trinotate_wasp_3.sqlite',
+         '/home/gguidini/Downloads/SQLite/Trinotate_spider.sqlite']
+# n = input(u"Qual a espécie?\n")
+names = ['par 1', 'par 2', 'par 3']
 GOs = ['0046872', '0004888', '0019870', '0008200', '0008061', '0003950', '0005509', '0004568', '0030550', '0004872', '0019855', '0008092', '0005525', '0016881', '0004622', '0005515']
 conns = []
 for f in Files:
     conns.append(connect(f))
 
-
+#df = getTables(conns[0:3], names, GOs, pd.DataFrame(index=['GO:'+go for go in GOs]))
+#df = mergeColumn(df, names, 'Escorpião')
+#df = getTables(conns[3:6], names, GOs, df)
+#df = mergeColumn(df, names, 'Vespa')
+#df = getTables([conns[6]], ['Aranha'], GOs, df)
+#df = df[['Escorpião', 'Aranha', 'Vespa']]
 # Get the table
-df = getTables(conns, ['Aranha'], GOs)
-#print(df.size)
-ax = plotGraph(df, n)
-anotateNumbers(ax)
-plt.tight_layout()
-plt.legend(loc='best')
-plt.show()
+
+#sns.heatmap(df, annot=True, fmt='g')
+#plt.title("Quantidades de GOs anotados por espécie")
+#plt.tight_layout()
+#plt.show()
 
 
 

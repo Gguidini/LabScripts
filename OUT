@@ -1,3 +1,4 @@
+
 Tabela UniprotIndex
 Columns: 
 Accession LinkId AttributeType 
@@ -18,11 +19,11 @@ Tabela HMMERDbase
 Columns: 
 QueryProtID pfam_id HMMERDomain HMMERTDomainDescription QueryStartAlign QueryEndAlign PFAMStartAlign PFAMEndAlign FullSeqEvalue ThisDomainEvalue FullSeqScore FullDomainScore 
 ==================================================
-Tabela MaxQuantGFFtoTrinity
+Tabela MaxQuantGFFtoTrinity [EMPTY]
 Columns: 
 MaxQuantQueryID MaxQuantQueryParentID MaxQuantProteinMatchStart MaxQuantProteinMatchend MaxQuantStrand MaxQuantTrinityMatchID MaxQuantscoreFKPMValue MaxQuantPeptideValue MaxQuantPeptideScore MaxQuantExonValue 
 ==================================================
-Tabela SignalP
+Tabela SignalP [EMPTY]
 Columns: 
 query_prot_id start end score prediction 
 ==================================================
@@ -34,7 +35,7 @@ Tabela ORF
 Columns: 
 orf_id transcript_id length strand lend rend peptide 
 ==================================================
-Tabela tmhmm
+Tabela tmhmm [EMPTY]
 Columns: 
 queryprotid Score PredHel Topology 
 ==================================================
@@ -50,31 +51,31 @@ Tabela pfam2go
 Columns: 
 pfam_acc go_id 
 ==================================================
-Tabela Samples
+Tabela Samples [EMPTY]
 Columns: 
 sample_id sample_name 
 ==================================================
-Tabela Replicates
+Tabela Replicates [EMPTY]
 Columns: 
 replicate_id replicate_name sample_id 
 ==================================================
-Tabela Expression
+Tabela Expression [EMPTY]
 Columns: 
 feature_name feature_type replicate_id frag_count fpkm 
 ==================================================
-Tabela Diff_expression
+Tabela Diff_expression [EMPTY]
 Columns: 
 sample_id_A sample_id_B feature_name feature_type log_avg_expr log_fold_change p_value fdr 
 ==================================================
-Tabela ExprClusterAnalyses
+Tabela ExprClusterAnalyses [EMPTY]
 Columns: 
 cluster_analysis_id cluster_analysis_group cluster_analysis_name 
 ==================================================
-Tabela ExprClusters
+Tabela ExprClusters [EMPTY]
 Columns: 
 cluster_analysis_id expr_cluster_id feature_name 
 ==================================================
-Tabela RNAMMERdata
+Tabela RNAMMERdata [EMPTY]
 Columns: 
 TrinityQuerySequence Featurestart Featureend Featurescore FeatureStrand FeatureFrame Featureprediction 
 ==================================================
