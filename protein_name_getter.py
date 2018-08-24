@@ -59,18 +59,18 @@ def uploadDocs(db, df, data):
 	print("Inserindo Documentos...")
 	total = df.index
 	columns = df.columns
-	fields = ["transcript_sequence", 'orf_peptide', 'Blast_fullAccession', 'Blast_GINumber', 'Blast_percentIdentity', 'Blast_Evalue', 'Uniprot_accession', 'Uniprot_attribute_type', 'GO_id', 'GO_name', 'GO_namespace', 'GO_def', 'HMMER_domain', 'HMMER_domainDescription', 'HMMER_fullSeqEvalue', 'Pfam_accession', 'Pfam_domainName', 'Pfam_domainDescription', 'NCBI_taxonomyAccession', 'NCBI_taxonomyValue', 'EggNOG_indexTerm', 'EggNOG_descriptionValue', 'has_scorpion']
+	fields = ['Uniprot_accession', 'Uniprot_attribute_type', 'Pfam_accession', 'Pfam_domainName', 'Pfam_domainDescription', 'NCBI_taxonomyAccession', 'NCBI_taxonomyValue', 'Blast_percentIdentity', 'Blast_Evalue', 'Blast_fullAccession', 'Blast_GINumber', 'HMMER_domain', 'HMMER_domainDescription', 'HMMER_fullSeqEvalue', "transcript_sequence", 'orf_peptide', 'EggNOG_indexTerm', 'EggNOG_descriptionValue', 'GO_id', 'GO_name', 'GO_namespace', 'GO_def', 'has_scorpion']
 	for index, row in df.iterrows():
 		print("[{}/{}] - {}\r".format(index, total, row['id']), end="")
 		doc = {}
-		for idx, col in enumerate(columns):
-			doc[fields[idx]] = row[col]
 		t = data[row['FullAccession']]
+		doc['id'] = index
 		doc['name'] = t[0]
 		doc['keywords'] = t[1]
+		for idx, col in enumerate(columns):
+			doc[fields[idx]] = row[col]
 		doc['has_wasp'] = 0
 		doc['has_spider'] = 0
-		doc['id'] = index
 		# insert doc in DB
 		db.insert_one(doc)
 	print("Done!")
@@ -83,7 +83,7 @@ def getTable(conn):
 	"""
 	# insecure, but will be used locall, and only once.
 	query = """ 
-	SELECT DISTINCT Transcript.sequence, ORF.peptide, BlastDbase.FullAccession, BlastDbase.GINumber, BlastDbase.PercentIdentity, BlastDbase.Evalue, UniprotIndex.Accession, UniprotIndex.AttributeType, go.id, go.name, go.namespace, go.def, UniprotIndex.LinkID, HMMERDbase.HMMERDomain, HMMERDbase.HMMERTDomainDescription, HMMERDbase.FullSeqScore, PFAMreference.pfam_accession, PFAMreference.pfam_domainname, PFAMreference.pfam_domaindescription, TaxonomyIndex.NCBITaxonomyAccession, TaxonomyIndex.TaxonomyValue, eggNOGIndex.eggNOGIndexTerm, eggNOGIndex.eggNOGDescriptionValue
+	SELECT DISTINCT UniprotIndex.Accession, UniprotIndex.AttributeType, PFAMreference.pfam_accession, PFAMreference.pfam_domainname, PFAMreference.pfam_domaindescription, TaxonomyIndex.NCBITaxonomyAccession, TaxonomyIndex.TaxonomyValue, BlastDbase.PercentIdentity, BlastDbase.Evalue, BlastDbase.FullAccession, BlastDbase.GINumber, HMMERDbase.HMMERDomain, HMMERDbase.HMMERTDomainDescription, HMMERDbase.FullSeqScore, Transcript.sequence, ORF.peptide, eggNOGIndex.eggNOGIndexTerm, eggNOGIndex.eggNOGDescriptionValue, go.id, go.name, go.namespace, go.def, UniprotIndex.LinkID
 	FROM Transcript 
 	INNER JOIN ORF ON ORF.transcript_id=Transcript.transcript_id
 	INNER JOIN BlastDbase ON (BlastDbase.TrinityID=ORF.orf_id OR BlastDbase.TrinityID=ORF.transcript_id)
