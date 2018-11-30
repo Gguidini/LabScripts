@@ -46,32 +46,32 @@ def connect(filename):
     return conn
 
 def connectInovatoxin():
-        """ Connection to MongoDB """
-        client = MongoClient()
-        db = client['inovatoxin']
-        return db['Proteins_protein']
+    """ Connection to MongoDB """
+    client = MongoClient()
+    db = client['inovatoxin']
+    return db['Proteins_protein']
 
 def uploadDocs(db, df, data):
-        """ 
-        Uploads docs to MongoDB in correct Collection.
-        Docs are generated according to Django Model.
-        """
-        print("Inserindo Documentos...")
-        total = df.index
-        columns = df.columns
-        fields = ['Uniprot_accession', 'Uniprot_attribute_type', 'Pfam_accession', 'Pfam_domainName', 'Pfam_domainDescription', 'NCBI_taxonomyAccession', 'NCBI_taxonomyValue', 'Blast_percentIdentity', 'Blast_Evalue', 'Blast_fullAccession', 'Blast_GINumber', 'HMMER_domain', 'HMMER_domainDescription', 'HMMER_fullSeqEvalue', "transcript_sequence", 'orf_peptide', 'EggNOG_indexTerm', 'EggNOG_descriptionValue', 'GO_id', 'GO_name', 'GO_namespace', 'GO_def', 'has_scorpion', 'has_wasp', 'has_spider']
-        for index, row in df.iterrows():
-                print("[{}/{}] - {}\r".format(index, total, row['id']), end="")
-                doc = {}
-                t = data[row['FullAccession']]
-                doc['id'] = index
-                doc['name'] = t[0]
-                doc['keywords'] = t[1]
-                for idx, col in enumerate(columns):
-                        doc[fields[idx]] = row[col]
-                # insert doc in DB
-                db.insert_one(doc)
-        print("Done!")
+    """ 
+    Uploads docs to MongoDB in correct Collection.
+    Docs are generated according to Django Model.
+    """
+    print("Inserindo Documentos...")
+    total = df.index
+    columns = df.columns
+    fields = ['Uniprot_accession', 'Uniprot_attribute_type', 'Pfam_accession', 'Pfam_domainName', 'Pfam_domainDescription', 'NCBI_taxonomyAccession', 'NCBI_taxonomyValue', 'Blast_percentIdentity', 'Blast_Evalue', 'Blast_fullAccession', 'Blast_GINumber', 'HMMER_domain', 'HMMER_domainDescription', 'HMMER_fullSeqEvalue', "transcript_sequence", 'orf_peptide', 'EggNOG_indexTerm', 'EggNOG_descriptionValue', 'GO_id', 'GO_name', 'GO_namespace', 'GO_def', 'has_scorpion', 'has_wasp', 'has_spider']
+    for index, row in df.iterrows():
+        print("[{}/{}] - {}\r".format(index, total, row['id']), end="")
+        doc = {}
+        t = data[row['FullAccession']]
+        doc['id'] = index
+        doc['name'] = t[0]
+        doc['keywords'] = t[1]
+        for idx, col in enumerate(columns):
+            doc[fields[idx]] = row[col]
+            # insert doc in DB
+            db.insert_one(doc)
+    print("Done!")
 
 
 def getTable(conn):
