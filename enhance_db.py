@@ -69,6 +69,8 @@ def main():
         if info is not None:
             UpdateEntry(info)
         done += 1
+    print('[{}/{}] - {}'.format(done, size, gene))
+    print('All done!')
 
 if __name__ == '__main__':
     main()
