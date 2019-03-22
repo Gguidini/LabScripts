@@ -40,17 +40,17 @@ def gen_files(gene_map, docs, species):
     it = 1
     # Current directory
     # Creating necessary directories
-    DIR = os.getcwd()
+
     try:
-        os.mkdir(DIR + '/' + species + "/fastas")
+        os.mkdir(species + "/fastas")
     except FileExistsError:
         print("Dir fastas exists. Skipping")
     try:
-        os.mkdir(DIR + '/' + species + "/infos")
+        os.mkdir(species + "/infos")
     except FileExistsError:
         print("Dir infos exists. Skipping")
     # General file for species
-    genetic_elements = open(species + '/genetic_elements.dat', 'w')
+    genetic_elements = open(species + '/genetic-elements.dat', 'w')
     # Generate files
     for doc in docs:
         print("\r[{}/{}] - {:12s}".format(it, count, doc["Blast_fullAccession"]), end="")
@@ -60,6 +60,7 @@ def gen_files(gene_map, docs, species):
         if ec is None:
             print(Fore.RED + " EC NOT FOUND" + Style.RESET_ALL)
             continue
+        ec = ec[3:]
 
         prot_id = "Inova_" + doc["Blast_fullAccession"] + "_" + str(doc["id"])
         fasta_file = open(species + "/fastas/" + prot_id + ".fsa", 'w')
@@ -71,8 +72,8 @@ def gen_files(gene_map, docs, species):
         text += "NAME  " + doc["name"] + "\n"
         text += "TYPE  :CONTIG\n"
         text += "CIRCULAR?  N\n"
-        text += "SEQ-FILE    " + DIR + '/' + species + "/fastas/" + prot_id + ".fsa\n"
-        text += "ANNOT-FILE    " + DIR + '/' + species + "/infos/" + prot_id + ".pf\n"
+        text += "SEQ-FILE    " + species + "/fastas/" + prot_id + ".fsa\n"
+        text += "ANNOT-FILE    " + species + "/infos/" + prot_id + ".pf\n"
         text += "//\n"
         genetic_elements.write(text)
 
@@ -88,6 +89,7 @@ def gen_files(gene_map, docs, species):
         text += "STARTBASE  1\n"
         text += "ENDBASE  " + str(len(seq)) + "\n"
         text += "EC  " + ec + "\n"
+        text += "DBLINK  " + doc['GO_id'] + '\n'
         text += "//\n"
         info_file.write(text)
         info_file.close()
