@@ -18,6 +18,9 @@ from pymongo import MongoClient
 # Nice Warnings
 from colorama import Fore, Back, Style
 
+class GeneNotFound(Exception):
+    pass
+
 def get_protein_EC(gene, retry=0):
     rgx = re.compile(r"EC=\d+\.\d+\.\d+\.\d+")
     try:
@@ -30,7 +33,7 @@ def get_protein_EC(gene, retry=0):
         if retry < 10:
             time.sleep(.5) # cool down time
             return get_protein_EC(gene, retry+1)
-        print(Fore.YELLOW + "WARNING: " + Style.RESET_ALL + "%s not found" % gene)
+        print(Fore.RED + "ERROR: " + Style.RESET_ALL + "%s not found" % gene)
         return e
     return None
 
@@ -64,7 +67,7 @@ def gen_files(gene_map, docs, species):
 
         ec = gene_map.get(doc["Blast_fullAccession"], None)
         if ec is None:
-            print(Fore.RED + " EC NOT FOUND" + Style.RESET_ALL)
+            print(Fore.YELLOW + " EC NOT FOUND" + Style.RESET_ALL)
             continue
         ec = ec[3:]
 
@@ -101,46 +104,67 @@ def gen_files(gene_map, docs, species):
         info_file.close()
     genetic_elements.close()
 
-DB = connect_Inovatoxin()
-i = 1
-initial_time = datetime.datetime.now()
-GENES = DB.distinct("Blast_fullAccession")
-GENE_MAP = {}
-print("CURRENT GENE - TIME ELAPSED - AVERAGE TIME - CURRENT GENE")
-for g in GENES:
-    time_before = datetime.datetime.now()
-    print("\r[{}/{}] - {} - {} - Getting EC for {:12s} ".format(i, len(GENES),
-        time_before - initial_time, ((time_before - initial_time)/i), g), end="")
-    i += 1
-    GENE_MAP[g] = get_protein_EC(g)
-print(Fore.GREEN + "All ECs collected!" + Style.RESET_ALL)
-# Gets docs separated by species 
-SPIDER = DB.find({"has_spider": {"$gt": 0}})
-try: 
-    os.mkdir('spider')
-except:
-    print("spider exists, skipping")
-SCORPION = DB.find({"has_scorpion": {"$gt": 0}})
-try: 
-    os.mkdir('scorpion')
-except:
-    print("scorpion exists, skipping")
-WASP = DB.find({"has_wasp": {"$gt": 0}})
-try: 
-    os.mkdir('wasp')
-except:
-    print("wasp exists, skipping")
-# generate files for each species
-print("Generating files for SPIDER...", end="")
-gen_files(GENE_MAP, SPIDER, "spider")
-print(Fore.GREEN + "DONE!" + Style.RESET_ALL)
-print("Generating files for SCORPION...", end="")
-gen_files(GENE_MAP, SCORPION, "scorpion")
-print(Fore.GREEN + "DONE!" + Style.RESET_ALL)
-print("Generating files for WASP...", end="")
-gen_files(GENE_MAP, WASP, "wasp")
-print(Fore.GREEN + "DONE!" + Style.RESET_ALL)
+def collect_genes(GENES, GENE_MAP):
+    i = len(GENE_MAP.keys())
+    initial_time = datetime.datetime.now()
+    print("CURRENT GENE -  TIME ELAPSED  -  AVERAGE TIME  - CURRENT GENE")
+    for g in GENES:
+        time_before = datetime.datetime.now()
+        i += 1
+        print("\r[{:04}/{:04}] - {} - {} - Getting EC for {:12s} ".format(i, len(GENES),
+            time_before - initial_time, ((time_before - initial_time)/i), g), end="")
+        ec = get_protein_EC(g)
+        if isinstance(ec, Exception):
+            return (GENE_MAP, GeneNotFound)
+        else:
+            GENE_MAP[g] = ec
+    print(Fore.GREEN + "All ECs collected!" + Style.RESET_ALL)
+    return (GENE_MAP, None)
 
 
-    
+def main():
+    # Connect to DB
+    DB = connect_Inovatoxin()
+    # Get all names to search
+    GENES = DB.distinct("Blast_fullAccession")
+    # Gene cache 
+    GENE_MAP = pickle.load(open("_gene_cache.pkl", "rb"))
+    # removes already-searched genes from names to search
+    for g in GENE_MAP.keys():
+        GENES.remove(g)
+    # search remaining names
+    GENE_MAP, e = collect_genes(GENES, GENE_MAP)
+    if e is not None:
+        print("All collected proteins will be dumped in _gene_cache.pkl")
+        pickle.dump(GENE_MAP, open("_gene_cache.pkl", "wb"))
+        exit(1)
+    # Gets docs separated by species 
+    SPIDER = DB.find({"has_spider": {"$gt": 0}})
+    try: 
+        os.mkdir('spider')
+    except:
+        print("spider exists, skipping")
+    SCORPION = DB.find({"has_scorpion": {"$gt": 0}})
+    try: 
+        os.mkdir('scorpion')
+    except:
+        print("scorpion exists, skipping")
+    WASP = DB.find({"has_wasp": {"$gt": 0}})
+    try: 
+        os.mkdir('wasp')
+    except:
+        print("wasp exists, skipping")
+    # generate files for each species
+    print("Generating files for SPIDER...", end="")
+    gen_files(GENE_MAP, SPIDER, "spider")
+    print(Fore.GREEN + "DONE!" + Style.RESET_ALL)
+    print("Generating files for SCORPION...", end="")
+    gen_files(GENE_MAP, SCORPION, "scorpion")
+    print(Fore.GREEN + "DONE!" + Style.RESET_ALL)
+    print("Generating files for WASP...", end="")
+    gen_files(GENE_MAP, WASP, "wasp")
+    print(Fore.GREEN + "DONE!" + Style.RESET_ALL)
+
+if __name__ == "__main__":
+    main()
 
