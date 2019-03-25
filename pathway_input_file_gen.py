@@ -6,6 +6,8 @@
 import re
 import os
 import datetime
+import time
+import pickle
 # Possible errors
 from urllib.error import HTTPError
 
@@ -16,7 +18,7 @@ from pymongo import MongoClient
 # Nice Warnings
 from colorama import Fore, Back, Style
 
-def get_protein_EC(gene):
+def get_protein_EC(gene, retry=0):
     rgx = re.compile(r"EC=\d+\.\d+\.\d+\.\d+")
     try:
         with ExPASy.get_sprot_raw(gene) as handle:
@@ -24,8 +26,12 @@ def get_protein_EC(gene):
             match = rgx.search(seq_record.description)
             if match is not None:
                 return match.group(0)
-    except:
+    except Exception as e:
+        if retry < 10:
+            time.sleep(.5) # cool down time
+            return get_protein_EC(gene, retry+1)
         print(Fore.YELLOW + "WARNING: " + Style.RESET_ALL + "%s not found" % gene)
+        return e
     return None
 
 def connect_Inovatoxin():
