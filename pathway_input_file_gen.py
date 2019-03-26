@@ -8,8 +8,6 @@ import os
 import datetime
 import time
 import pickle
-# Possible errors
-from urllib.error import HTTPError
 
 # Retrieve Protein Names
 from Bio import ExPASy, SeqIO
@@ -17,11 +15,29 @@ from Bio import ExPASy, SeqIO
 from pymongo import MongoClient
 # Nice Warnings
 from colorama import Fore, Back, Style
+# Progress bar
+from tqdm import tqdm
 
 class GeneNotFound(Exception):
+    """ My own exception, for a gene that wasn't found."""
     pass
 
 def get_protein_EC(gene, retry=0):
+    """ Queries Uniprot for a gene entry and extracts the EC, if any.
+        If the gene is successfully queried, but no EC is present, returns None.
+        It's possible that, due to connection problems, a gene that is in
+        Uniprot is not found, so it will try again after a cooldown period.
+
+        > Input
+        gene : str => the gene code to be queried
+        retry : int => number of tries. Max 10.
+
+        > Output
+        - EC for GENE, if GENE has one annotated in Uniprot.
+        - None, if GENE doesn't have an EC
+        - Exception, if any exception occurred.
+          Most common exceptions are HTTPError or ValueError.
+    """
     rgx = re.compile(r"EC=\d+\.\d+\.\d+\.\d+")
     try:
         with ExPASy.get_sprot_raw(gene) as handle:
@@ -31,25 +47,35 @@ def get_protein_EC(gene, retry=0):
                 return match.group(0)
     except Exception as e:
         if retry < 10:
-            time.sleep(.5) # cool down time
+            time.sleep(5) # cool down time 5s
+            print("\nGENE NOT FOUND. RETRYING (%d)" % retry )
             return get_protein_EC(gene, retry+1)
-        print(Fore.RED + "ERROR: " + Style.RESET_ALL + "%s not found" % gene)
         return e
+    except KeyboardInterrupt as k:
+        print("\nKeyBoard Interrupt Signal received. Aborting")
+        return k
     return None
 
 def connect_Inovatoxin():
-    """ Connection to MongoDB """
+    """ Connection to Inovatoxin MongoDB """
     client = MongoClient()
-    MONGO = client['inovatoxin']
-    return MONGO['Proteins_protein']
+    mongo = client['inovatoxin']
+    return mongo['Proteins_protein']
 
 def gen_files(gene_map, docs, species):
-    # Information for progress feedback
-    count = docs.count()
-    it = 1
-    # Current directory
-    # Creating necessary directories
+    """ Generates input files for PathwayTools, per species.
+        Files are 3:
+        1. genetic-elements.dat
+            "Metadata" file, with all entries for a species.
+            Points to the other files for each entry.
+        2. fastas/ files
+            Contains the sequence of that protein.
+        3. infos/ files
+            Contains addicional information of each entry.
 
+        Only genes with an EC are added as an entry.
+    """
+    # Creating necessary directories
     try:
         os.mkdir(species + "/fastas")
     except FileExistsError:
@@ -61,10 +87,7 @@ def gen_files(gene_map, docs, species):
     # General file for species
     genetic_elements = open(species + '/genetic-elements.dat', 'w')
     # Generate files
-    for doc in docs:
-        print("\r[{}/{}] - {:12s}".format(it, count, doc["Blast_fullAccession"]), end="")
-        it += 1
-
+    for doc in tqdm(docs):
         ec = gene_map.get(doc["Blast_fullAccession"], None)
         if ec is None:
             print(Fore.YELLOW + " EC NOT FOUND" + Style.RESET_ALL)
@@ -104,22 +127,29 @@ def gen_files(gene_map, docs, species):
         info_file.close()
     genetic_elements.close()
 
-def collect_genes(GENES, GENE_MAP):
-    i = len(GENE_MAP.keys())
+def collect_genes(genes, gene_map):
+    """ Queries all genes missing and saves them in gene_map.
+        The gene_map is: (gene_name, EC).
+        If the gene has no EC, then it's (gene_name, None).
+
+        Highly dependent on get_protein_EC function. If Exception is returned,
+        then forwards the exception and terminates.
+    """
+    i = len(gene_map.keys())
     initial_time = datetime.datetime.now()
     print("CURRENT GENE -  TIME ELAPSED  -  AVERAGE TIME  - CURRENT GENE")
-    for g in GENES:
+    for g in genes:
         time_before = datetime.datetime.now()
         i += 1
-        print("\r[{:04}/{:04}] - {} - {} - Getting EC for {:12s} ".format(i, len(GENES),
+        print("\r [{:04}/{:04}] - {} - {} - Getting EC for {:12s} ".format(i, len(genes),
             time_before - initial_time, ((time_before - initial_time)/i), g), end="")
         ec = get_protein_EC(g)
         if isinstance(ec, Exception):
-            return (GENE_MAP, GeneNotFound)
+            return (gene_map, GeneNotFound(g + "not found."))
         else:
-            GENE_MAP[g] = ec
+            gene_map[g] = ec
     print(Fore.GREEN + "All ECs collected!" + Style.RESET_ALL)
-    return (GENE_MAP, None)
+    return (gene_map, None)
 
 
 def main():
