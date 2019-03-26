@@ -8,7 +8,8 @@ import os
 import datetime
 import time
 import pickle
-
+import threading
+import sys
 # Retrieve Protein Names
 from Bio import ExPASy, SeqIO
 # Connect to MongoDB
@@ -21,6 +22,45 @@ from tqdm import tqdm
 class GeneNotFound(Exception):
     """ My own exception, for a gene that wasn't found."""
     pass
+
+class GeneGetter(threading.Thread):
+    """ Thread to execute collect_genes for some genes
+        because the process of collecting them takes forever.
+    """
+    def __init__(self, gene_list, shared_gene_map):
+        threading.Thread.__init__(self)
+        self.gene_list = gene_list
+        self.shared_gene_map = shared_gene_map
+    def run(self):
+        my_genes = collect_genes(self.gene_list, {})
+        LOCK.acquire()
+        self.shared_gene_map.update(my_genes)
+        LOCK.release()
+
+class ProgressBar():
+    """ Used to display progress when collecting genes.
+    """
+    def __init__(self):
+        print("ProgressBar created")
+
+    def start(self, total_genes):
+        self.total = total_genes
+        self.start_time = datetime.datetime.now()
+        self.done = 0
+        print("CURRENT GENE -  TIME ELAPSED  -  AVERAGE TIME  - CURRENT GENE")
+    
+    def update(self, gene):
+        self.done += 1
+        now = datetime.datetime.now()
+        avg = (now - self.start_time)/self.done
+        print("\r [{:04}/{:04}] - {} - {} - Getting EC for {:12s} ".format(self.done, self.total,
+            now - self.start_time, avg, gene), end="")
+    
+def connect_Inovatoxin():
+    """ Connection to Inovatoxin MongoDB """
+    client = MongoClient()
+    mongo = client['inovatoxin']
+    return mongo['Proteins_protein']
 
 def get_protein_EC(gene, retry=0):
     """ Queries Uniprot for a gene entry and extracts the EC, if any.
@@ -56,11 +96,28 @@ def get_protein_EC(gene, retry=0):
         return k
     return None
 
-def connect_Inovatoxin():
-    """ Connection to Inovatoxin MongoDB """
-    client = MongoClient()
-    mongo = client['inovatoxin']
-    return mongo['Proteins_protein']
+def collect_genes(genes, gene_map):
+    """ Queries all genes missing and saves them in gene_map.
+        The gene_map is: (gene_name, EC).
+        If the gene has no EC, then it's (gene_name, None).
+
+        Highly dependent on get_protein_EC function. If Exception is returned,
+        then forwards the exception and terminates.
+    """
+    global MISSED
+    global PROGRESS_UPDATER
+    for g in genes:
+        LOCK.acquire()
+        PROGRESS_UPDATER.update(g)
+        LOCK.release()
+        ec = get_protein_EC(g)
+        if isinstance(ec, Exception):
+            LOCK.acquire()
+            MISSED.append(g)
+            LOCK.release()
+        else:
+            gene_map[g] = ec
+    return gene_map
 
 def gen_files(gene_map, docs, species):
     """ Generates input files for PathwayTools, per species.
@@ -127,34 +184,10 @@ def gen_files(gene_map, docs, species):
         info_file.close()
     genetic_elements.close()
 
-def collect_genes(genes, gene_map):
-    """ Queries all genes missing and saves them in gene_map.
-        The gene_map is: (gene_name, EC).
-        If the gene has no EC, then it's (gene_name, None).
-
-        Highly dependent on get_protein_EC function. If Exception is returned,
-        then forwards the exception and terminates.
-    """
-    i = len(gene_map.keys())
-    initial_time = datetime.datetime.now()
-    print("CURRENT GENE -  TIME ELAPSED  -  AVERAGE TIME  - CURRENT GENE")
-    for g in genes:
-        time_before = datetime.datetime.now()
-        i += 1
-        print("\r [{:04}/{:04}] - {} - {} - Getting EC for {:12s} ".format(i, len(genes),
-            time_before - initial_time, ((time_before - initial_time)/i), g), end="")
-        ec = get_protein_EC(g)
-        if isinstance(ec, Exception):
-            return (gene_map, GeneNotFound(g + "not found."))
-        else:
-            gene_map[g] = ec
-    print(Fore.GREEN + "All ECs collected!" + Style.RESET_ALL)
-    return (gene_map, None)
-
-
-def main():
+def collect(number_of_threads=5, build=True):
     # Connect to DB
     DB = connect_Inovatoxin()
+    global PROGRESS_UPDATER
     # Get all names to search
     GENES = DB.distinct("Blast_fullAccession")
     # Gene cache, if any
@@ -166,11 +199,43 @@ def main():
     for g in GENE_MAP.keys():
         GENES.remove(g)
     # search remaining names
-    GENE_MAP, e = collect_genes(GENES, GENE_MAP)
-    if e is not None:
+    # in different threads
+    threads = []
+    chunk_size = len(GENES)//number_of_threads
+    # start progress bar
+    PROGRESS_UPDATER.start(len(GENES))
+    for i in range(number_of_threads):
+        lst = chunk_size * i + chunk_size
+        st = chunk_size * i
+        if i < number_of_threads - 1:
+            t = GeneGetter(GENES[st : lst], GENE_MAP)
+        else:
+            t = GeneGetter(GENES[st : ], GENE_MAP)
+        t.start()
+        threads.append(t)
+
+    # wait for all threads to run
+    for t in threads:
+        t.join()
+
+    # ProgressBar no longer needed
+    del(PROGRESS_UPDATER)
+    print("\n")
+    # Verify if any genes were missing
+    pickle.dump(GENE_MAP, open("_gene_cache.pkl", "wb"))
+    if len(MISSED) > 0:
+        print("Some GENES were missed:")
+        for m in MISSED:
+            print(m)
         print("All collected proteins will be dumped in _gene_cache.pkl")
-        pickle.dump(GENE_MAP, open("_gene_cache.pkl", "wb"))
+        print("To generate files with with collected genes run 'python pathway_input_file_gen.py build'")
         exit(1)
+    else:
+        return GENE_MAP
+
+def build(GENE_MAP):
+    # Connect to DB
+    DB = connect_Inovatoxin()
     # Gets docs separated by species 
     SPIDER = DB.find({"has_spider": {"$gt": 0}})
     try: 
@@ -198,6 +263,29 @@ def main():
     gen_files(GENE_MAP, WASP, "wasp")
     print(Fore.GREEN + "DONE!" + Style.RESET_ALL)
 
+# Lock to sync threads
+LOCK = threading.Lock()
+# List of missing genes
+MISSED = []
+# The progressbar updater
+PROGRESS_UPDATER = ProgressBar()
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) == 1:
+        GENE_MAP = collect()
+        build(GENE_MAP)
+    elif sys.argv[1] == 'build':
+        if os.path.isfile("_gene_cache.pkl"):
+            GENE_MAP = pickle.load(open("_gene_cache.pkl", "rb"))
+            build(GENE_MAP)
+        else:
+            print("No gene cache to build. Aborting.")
+    elif sys.argv[1] == 'collect':
+        collect(build=False)
+    else:
+        print("Script to build files por PathwayTools")
+        print(Fore.GREEN + "Run without arguments to collect and build" + Style.RESET_ALL)
+        print("Arguments:")
+        print(Fore.CYAN + "collect" + Style.RESET_ALL + " - just collect the genes and cache them. Doesn't build files")
+        print(Fore.CYAN + "build" + Style.RESET_ALL + " - uses cached genes to build files.")
+
 
