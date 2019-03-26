@@ -90,7 +90,7 @@ def gen_files(gene_map, docs, species):
     for doc in tqdm(docs):
         ec = gene_map.get(doc["Blast_fullAccession"], None)
         if ec is None:
-            print(Fore.YELLOW + " EC NOT FOUND" + Style.RESET_ALL)
+            print(doc["Blast_fullAccession"] + ": " + Fore.YELLOW + " EC NOT FOUND" + Style.RESET_ALL)
             continue
         ec = ec[3:]
 
@@ -157,8 +157,11 @@ def main():
     DB = connect_Inovatoxin()
     # Get all names to search
     GENES = DB.distinct("Blast_fullAccession")
-    # Gene cache 
-    GENE_MAP = pickle.load(open("_gene_cache.pkl", "rb"))
+    # Gene cache, if any
+    if os.path.isfile("_gene_cache.pkl"):
+        GENE_MAP = pickle.load(open("_gene_cache.pkl", "rb"))
+    else:
+        GENE_MAP = {}
     # removes already-searched genes from names to search
     for g in GENE_MAP.keys():
         GENES.remove(g)
