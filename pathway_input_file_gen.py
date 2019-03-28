@@ -32,9 +32,13 @@ def get_protein_EC(gene, retry=0):
     except Exception as e:
         if retry < 10:
             time.sleep(.5) # cool down time
+            print("Not found {}, retrying ({})".format(gene, retry+1))
             return get_protein_EC(gene, retry+1)
         print(Fore.RED + "ERROR: " + Style.RESET_ALL + "%s not found" % gene)
         return e
+    except KeyboardInterrupt as k:
+        print("Keyboard Interrupt received. Aborting.")
+        return k
     return None
 
 def connect_Inovatoxin():
@@ -115,6 +119,8 @@ def collect_genes(GENES, GENE_MAP):
             time_before - initial_time, ((time_before - initial_time)/i), g), end="")
         ec = get_protein_EC(g)
         if isinstance(ec, Exception):
+            return (GENE_MAP, GeneNotFound)
+        elif isinstance(ec, KeyboardInterrupt):
             return (GENE_MAP, GeneNotFound)
         else:
             GENE_MAP[g] = ec
