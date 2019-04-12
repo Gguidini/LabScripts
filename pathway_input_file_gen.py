@@ -12,8 +12,8 @@ import threading
 import sys
 # Retrieve Protein Names
 from Bio import ExPASy, SeqIO
-# Connect to MongoDB
-from pymongo import MongoClient
+# Connect to Inovatoxin
+from connect import connectInovatoxin
 # Nice Warnings
 from colorama import Fore, Back, Style
 # Progress bar
@@ -55,12 +55,6 @@ class ProgressBar():
         avg = (now - self.start_time)/self.done
         print("\r [{:04}/{:04}] - {} - {} - Getting EC for {:12s} ".format(self.done, self.total,
             now - self.start_time, avg, gene), end="")
-    
-def connect_Inovatoxin():
-    """ Connection to Inovatoxin MongoDB """
-    client = MongoClient()
-    mongo = client['inovatoxin']
-    return mongo['Proteins_protein']
 
 def get_protein_EC(gene, retry=0):
     """ Queries Uniprot for a gene entry and extracts the EC, if any.
@@ -186,7 +180,7 @@ def gen_files(gene_map, docs, species):
 
 def collect(number_of_threads=5, build=True):
     # Connect to DB
-    DB = connect_Inovatoxin()
+    DB = connectInovatoxin()
     global PROGRESS_UPDATER
     # Get all names to search
     GENES = DB.distinct("Blast_fullAccession")
@@ -235,7 +229,7 @@ def collect(number_of_threads=5, build=True):
 
 def build(GENE_MAP):
     # Connect to DB
-    DB = connect_Inovatoxin()
+    DB = connectInovatoxin()
     # Gets docs separated by species 
     SPIDER = DB.find({"has_spider": {"$gt": 0}})
     try: 
