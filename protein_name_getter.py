@@ -12,8 +12,8 @@ time consuming functions
 from Bio import ExPASy
 from Bio import SwissProt
 from Bio import SeqIO
-# Connect to MongoDB
-from pymongo import MongoClient
+# Connect to Inovatoxin
+from connect import connectInovatoxin
 # Connect to SQLite
 import sqlite3
 from sqlite3 import Error
@@ -44,12 +44,6 @@ def connect(filename):
         print(e)
         exit(1)
     return conn
-
-def connectInovatoxin():
-    """ Connection to MongoDB """
-    client = MongoClient()
-    db = client['inovatoxin']
-    return db['Proteins_protein']
 
 def uploadDocs(db, df, data):
     """ 
