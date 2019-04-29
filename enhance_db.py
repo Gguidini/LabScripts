@@ -6,7 +6,7 @@ It extracts more relevant data from SwissProt and updates the DB.
 import datetime
 import threading
 # Possible errors
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 # Retrieve Protein Names
 from Bio import ExPASy, SeqIO
@@ -80,6 +80,11 @@ def get_uniprot_number(gene, retry=0):
         if(retry < 10):
             print("Connection failed for gene %s. Retrying... (%d)" % (gene, retry))
         print(Fore.YELLOW + "WARNING: " + Style.RESET_ALL + "%s not found" % gene)
+    except URLError:
+        if(retry < 10):
+            print("Connection failed for gene %s. Retrying... (%d)" % (gene, retry))
+        print(Fore.YELLOW + "WARNING: " + Style.RESET_ALL + "%s not found" % gene)
+
     return None
 
 def update_entry(db, data):
