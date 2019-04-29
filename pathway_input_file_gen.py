@@ -147,7 +147,7 @@ def gen_files(gene_map, docs, species):
     for doc in tqdm(docs):
         ec = gene_map.get(doc["Blast_fullAccession"], None)
         if ec is None:
-            print(doc["Blast_fullAccession"] + ": " + Fore.YELLOW + " EC NOT FOUND" + Style.RESET_ALL)
+            # print(doc["Blast_fullAccession"] + ": " + Fore.YELLOW + " EC NOT FOUND" + Style.RESET_ALL)
             continue
         ec = ec[3:]
 
@@ -184,7 +184,7 @@ def gen_files(gene_map, docs, species):
         info_file.close()
     genetic_elements.close()
 
-def collect(number_of_threads=5, build=True):
+def collect(number_of_threads=10, build=True):
     # Connect to DB
     DB = connect_Inovatoxin()
     global PROGRESS_UPDATER
