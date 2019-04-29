@@ -20,6 +20,7 @@ from connect import connectInovatoxin
 # Lock to sync threads
 LOCK = threading.Lock()
 BAR = threading.Lock()
+SEM = threading.Semaphore(value=4)
 
 # Number of threads
 WORKERS = 12
@@ -83,11 +84,11 @@ def get_uniprot_number(gene, retry=0):
 
 def update_entry(db, data):
     """ Updates an entry in MongoDB """
-    LOCK.acquire()
+    SEM.acquire()
     db.update_many({'Blast_fullAccession':data['gene']}, {'$set': {
         'Uniprot_accession': data['id'],
     }})
-    LOCK.release()
+    SEM.release()
 
 PROGRESS = ProgressBar()
 
