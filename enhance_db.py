@@ -32,15 +32,16 @@ class GeneUpdater(threading.Thread):
         self.id = id
     def run(self):
         global PROGRESS
-        my_data = {}
+        my_data = []
         for g in self.genes:
             uni_number = get_uniprot_number(g)
             BAR.acquire()
             PROGRESS.update(g)
             BAR.release()
             if uni_number is not None:
-                my_data[g] = uni_number
+                my_data.append({'gene':g, 'id':uni_number})
         db = connectInovatoxin()
+        print(Fore.BLUE + "Worker %d moving to phase 2" % self.id + Style.RESET_ALL)
         for p in my_data:
             update_entry(db, p)
         print("\nWorker %d exiting" % self.id)
@@ -76,15 +77,11 @@ def get_uniprot_number(gene, retry=0):
         with ExPASy.get_sprot_raw(gene) as handle:
             info = SeqIO.read(handle, "swiss")
             return info.id
-    except HTTPError:
+    except:
         if(retry < 10):
-            print("Connection failed for gene %s. Retrying... (%d)" % (gene, retry))
-        print(Fore.YELLOW + "WARNING: " + Style.RESET_ALL + "%s not found" % gene)
-    except URLError:
-        if(retry < 10):
-            print("Connection failed for gene %s. Retrying... (%d)" % (gene, retry))
-        print(Fore.YELLOW + "WARNING: " + Style.RESET_ALL + "%s not found" % gene)
-
+            print("\nConnection failed for gene %s. Retrying... (%d)" % (gene, retry))
+            return get_uniprot_number(gene, retry+1)
+    print(Fore.YELLOW + "WARNING: " + Style.RESET_ALL + "%s not found" % gene)
     return None
 
 def update_entry(db, data):
