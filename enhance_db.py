@@ -61,14 +61,14 @@ class ProgressBar():
         self.total = total_genes
         self.start_time = datetime.datetime.now()
         self.done = 0
-        print("CURRENT GENE -  TIME ELAPSED  -  AVERAGE TIME  - CURRENT GENE")
+        print( Back.BLUE + "CURRENT GENE -  TIME ELAPSED  -  AVERAGE TIME  - CURRENT GENE" + Style.RESET_ALL)
   
     def update(self, gene):
         """ Updates screen progress bar"""
         self.done += 1
         now = datetime.datetime.now()
         avg = (now - self.start_time)/self.done
-        print("\r [{:04}/{:04}] - {} - {} - Current protein: {:12s} ".format(self.done, self.total,
+        print("\r [{:04}/{:04}] - {} - {} - {:12s} ".format(self.done, self.total,
             now - self.start_time, avg, gene), end="")
 
 def get_uniprot_number(gene, retry=0):
@@ -98,26 +98,35 @@ def main():
     """ Aggregates Mongo by gene name. Updates values """
     global PROGRESS
     db = connectInovatoxin()
-    genes = db.distinct('Uniprot_accession')
+    # Get documents to change
+    print("Querying database...")
+    genes = db.find({"$where": "this.Blast_fullAccession == this.Uniprot_accession"}).distinct('Blast_fullAccession')
     size = len(genes)
-    # Start progress bar
-    PROGRESS.start(size)
+
     # Prepare workers duties
     worker_part = size // WORKERS
     threads = []
     for i in range(WORKERS):
+        print("Preparing worker %d" % i)
         sts = i * worker_part
         end = sts + worker_part
         if i < WORKERS-1:
             t = GeneUpdater(genes[sts : end], i)
         else:
             t = GeneUpdater(genes[sts:], i)
-        t.start()
         threads.append(t)
+
+    # Start progress bar
+    PROGRESS.start(size)
+    # Start workers
+    for t in threads:
+        t.start()
     # Join with workers
     for t in threads:
         t.join()
     # Finishes
+    print( Fore.GREEN + "All workers have joined!" + Style.RESET_ALL)
+    print("Deleting Progress Bar")
     del(PROGRESS)
     print( Fore.GREEN + "All done!" + Style.RESET_ALL)
         
