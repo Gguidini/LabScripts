@@ -2,45 +2,106 @@
 # The databases where created using Trinotate
 # Blasts against cusom databases didn't go so well into the tables.
 
+import datetime
 import sqlite3
 import sys
+import threading
+from urllib.error import HTTPError, URLError
+
 import colorama
 import requests
+from Bio import ExPASy, SeqIO
 from bs4 import BeautifulSoup
 
-from urllib.error import HTTPError, URLError
-# Retrieve Protein Names
-from Bio import ExPASy, SeqIO
+########################################################### CONSTANTS AND SHARED VARIABLES
+NUMBER_OF_WORKERS = 20
 DATABASE = ""
 if len(sys.argv) == 1:
     DATABASE = input("Path to SQLite file: ")
 else:
     DATABASE = sys.argv[1]
-
 CONN = sqlite3.connect(DATABASE)
 CURSOR = CONN.cursor()
 
-def get_arachnoserver_name(idx, retry=0):
+ARACH_INDEX_QUERIES = []
+ARACH_QUERY_LOCK = threading.Lock()
+
+
+
+
+
+########################################################## CLASSES
+class ProgressBar():
+    """ Used to display progress when collecting genes.
+    """
+    def __init__(self):
+        print("ProgressBar created")
+
+    def start(self, total_genes):
+        self.total = total_genes
+        self.start_time = datetime.datetime.now()
+        self.done = 0
+        print("CURRENT GENE -  TIME ELAPSED  -  AVERAGE TIME  - CURRENT GENE")
+    
+    def update(self, gene):
+        self.done += 1
+        now = datetime.datetime.now()
+        avg = (now - self.start_time)/self.done
+        print("\r [{:04}/{:04}] - {} - {} - Getting EC for {:12s} ".format(self.done, self.total,
+            now - self.start_time, avg, gene), end="")
+
+class WorkerUniprot2Arach(threading.Thread):
+    """ Speedup the work of searching Uniprot for Arachnoserver references
+    """
+    def __init__(self):
+        threading.Thread.__init__(self)
+
+    def run(self):
+        row = ""
+        while row is not None:
+            row = get_next_query_arach()
+            PROGRESS.update(row[1])
+            idx = get_arachindex_from_uniprot(row[1])
+            if idx is not None:
+                CURSOR.execute("UPDATE BlastDbase SET ArachnoserverIndex = ? WHERE TrinityID = ? AND DatabaseSource != 'arachnoserver.pep.fa';", (idx, row[0]))
+
+def get_next_query_arach():
+    """ Gets the next Uniprot index to be searched for AS reference.
+        Returns None if there's no more work
+    """
+    ARACH_QUERY_LOCK.acquire()
+    if ARACH_INDEX_QUERIES != []:
+        ret = ARACH_INDEX_QUERIES.pop(0)
+    else:
+        ret = None
+    ARACH_QUERY_LOCK.release()
+    return ret
+
+def get_arachnoserver_name(idx):
+    """ Gets the Arachnoserver protein name from the index number"""
     page = requests.get("http://www.arachnoserver.org/toxincard.html", params={'id':idx})
     soup = BeautifulSoup(page.text, 'html.parser')
     name = soup.find(class_='toxinname')
     return name.text
 
-def get_arachnoserver_index(name, retry=0):
+def get_arachnoserver_index(name):
+    """ Gets the Arachnoserver index number from the name"""
     page = requests.get("http://www.arachnoserver.org/basicsearch.html", params={'keywords':name})
     soup = BeautifulSoup(page.text, 'html.parser')
     carddata = soup.find(class_='carddata')
     links = carddata.find_all('a', href=True)
     n = links[0]['href']
     return n[n.find('?id=')+4:]
-    
 
-def get_uniprot_number(gene, retry=0):
-    """ Returns information from SwissProt on gene """
+def get_arachindex_from_uniprot(gene, retry=0):
+    """ Gets Arachnoserver index from Uniprot, if any"""
     try:
         with ExPASy.get_sprot_raw(gene) as handle:
             info = SeqIO.read(handle, "swiss")
-            return info.name
+            for db in info.dbxrefs:
+                if db.startswith('ArachnoServer'):
+                    return db[14:]
+            return None
     except:
         if(retry < 10):
             print("\nConnection failed for gene %s. Retrying... (%d)" % (gene, retry))
@@ -48,8 +109,25 @@ def get_uniprot_number(gene, retry=0):
     print(colorama.Fore.YELLOW + "WARNING: " + colorama.Style.RESET_ALL + "%s not found" % gene)
     return None
 
+def get_uniprot_number(gene, retry=0):
+    """ Gets the name of Uniprot entry from index"""
+    try:
+        with ExPASy.get_sprot_raw(gene) as handle:
+            info = SeqIO.read(handle, "swiss")
+            return info.name
+    except HTTPError:
+        return None
+    except URLError:
+        if(retry < 10):
+            print("\nConnection failed for gene %s. Retrying... (%d)" % (gene, retry))
+            return get_uniprot_number(gene, retry+1)
+    print(colorama.Fore.YELLOW + "WARNING: " + colorama.Style.RESET_ALL + "%s not found" % gene)
+    return None
+
 def clean_warns():
-    """Remove ROWS that have script output in them"""
+    """Remove ROWS that have script output in them.
+        These rows are not usefull in any way.
+    """
     print("Checking for Rows with Warning as TrinityID....", end="")
     CURSOR.execute('SELECT count(*) FROM BlastDbase WHERE BlastDbase.TrinityID = "Warning:" GROUP BY BlastDbase.TrinityID;')
     if CURSOR.fetchone() is not None:
@@ -101,6 +179,7 @@ def has_arachnoserver_table():
     return False
 
 def clean_arachnoserver():
+    """ Cleans up Arachnoserver index entries"""
     if not has_arachnoserver_column():
         CURSOR.execute("ALTER TABLE BlastDbase ADD COLUMN ArachnoserverIndex TEXT;")
     if not has_arachnoserver_table():
@@ -170,6 +249,8 @@ def clean_arachnoserver():
             except sqlite3.IntegrityError:
                 pass # Entry already there
 
+######################################################################### MAIN
+PROGRESS = ProgressBar()
 if __name__ == "__main__":
     try:
         clean_warns()
@@ -195,4 +276,26 @@ if __name__ == "__main__":
         CONN.rollback()
         print(colorama.Fore.RED, "Cleaning arachnoserver created an error. Rolled back.", colorama.Style.RESET_ALL)
         print(exp)
+    all_not_arch = """
+        SELECT
+            distinct(BlastDbase.TrinityID),
+            BlastDbase.UniprotSearchString
+        FROM
+            BlastDbase
+        WHERE
+            BlastDbase.DatabaseSource = 'toxprot' OR
+            BlastDbase.DatabaseSource = 'Swissprot';
+    """
+    CURSOR.execute(all_not_arch)
+    ARACH_INDEX_QUERIES = CURSOR.fetchall()
+    PROGRESS.start(len(ARACH_INDEX_QUERIES))
+    workers = []
+    for i in range(NUMBER_OF_WORKERS):
+        w = WorkerUniprot2Arach()
+        w.start()
+        workers.append(w)
+    # Wait for work to be completed
+    for w in workers:
+        w.join()
+    CONN.commit()
     CONN.close()   
