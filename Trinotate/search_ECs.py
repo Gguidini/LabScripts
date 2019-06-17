@@ -38,13 +38,15 @@ class ProgressBar():
         self.total = total_genes
         self.start_time = datetime.datetime.now()
         self.done = 0
-        print("CURRENT GENE -  TIME ELAPSED  -  AVERAGE TIME  - CURRENT GENE")
+        self.err = 0
+        print("CURRENT GENE [ERRORS] -  TIME ELAPSED  -  AVERAGE TIME  - CURRENT GENE")
    
-    def update(self, gene):
+    def update(self, gene, err=0):
         self.done += 1
+        self.err += err
         now = datetime.datetime.now()
         avg = (now - self.start_time)/self.done
-        print("\r [{:04}/{:04}] - {} - {} - Getting EC for {:12s} ".format(self.done, self.total,
+        print("\r [{:04}/{:04}+{:04}] - {} - {} - {:12s} ".format(self.done, self.total, self.err,
             now - self.start_time, avg, gene), end="")
 
 class WorkerGetEC(threading.Thread):
@@ -53,19 +55,28 @@ class WorkerGetEC(threading.Thread):
     def __init__(self):
         threading.Thread.__init__(self)
 
-    def run(self):
+    def run(self): 
         my_conn = sqlite3.connect(DATABASE)
         my_cursor = my_conn.cursor()
-        row = ""
+        row = get_next_query()
         while row is not None:
-            row = get_next_query()
-            idx = get_protein_EC(row[0])
-            WRITERS_LOCK.acquire()
-            PROGRESS.update(row[0])
-            if idx is not None:
-                my_cursor.execute("INSERT INTO UniprotIndex('Accession', 'LinkId', 'AttributeType') VALUES (?,?,F);", (row[0], idx))
-            WRITERS_LOCK.release()
-
+            if row[0] is not None:
+                idx = get_protein_EC(row[0])
+                WRITERS_LOCK.acquire()
+                if idx is not None:
+                    try:
+                        my_cursor.execute("INSERT INTO UniprotIndex('Accession', 'LinkId', 'AttributeType') VALUES (?,?,'F');", (row[0], idx))
+                        my_conn.commit()
+                        PROGRESS.update(row[0])
+                    except sqlite3.OperationalError:
+                        PROGRESS.update(row[0], 1)
+                        EC_QUERIES_LOCK.acquire()
+                        EC_QUERIES.append(row)
+                        EC_QUERIES_LOCK.release()
+                        my_conn.rollback()
+                WRITERS_LOCK.release()
+                row = get_next_query()
+        my_conn.close()
 ########################################################### FUNCTIONS
 def get_protein_EC(gene, retry=0):
     """ Queries Uniprot for a gene entry and extracts the EC, if any.
@@ -117,6 +128,8 @@ PROGRESS = ProgressBar()
 if __name__ == "__main__":
     CURSOR.execute('SELECT DISTINCT(BlastDbase.FullAccession) FROM BlastDbase;')
     EC_QUERIES = CURSOR.fetchall()
+    CONN.commit()
+    CONN.close()
     PROGRESS.start(len(EC_QUERIES))
     workers = []
     for i in range(NUMBER_OF_WORKERS):
@@ -126,6 +139,4 @@ if __name__ == "__main__":
     # Wait for work to be completed
     for w in workers:
         w.join()
-    CONN.commit()
-    CONN.close()
     
