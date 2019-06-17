@@ -15,6 +15,8 @@ from bs4 import BeautifulSoup
 
 ########################################################### CONSTANTS AND SHARED VARIABLES
 NUMBER_OF_WORKERS = 20
+WRITER_LOCK = threading.Lock()
+
 DATABASE = ""
 if len(sys.argv) == 1:
     DATABASE = input("Path to SQLite file: ")
@@ -25,11 +27,6 @@ CURSOR = CONN.cursor()
 
 ARACH_INDEX_QUERIES = []
 ARACH_QUERY_LOCK = threading.Lock()
-
-
-
-
-
 ########################################################## CLASSES
 class ProgressBar():
     """ Used to display progress when collecting genes.
@@ -47,7 +44,7 @@ class ProgressBar():
         self.done += 1
         now = datetime.datetime.now()
         avg = (now - self.start_time)/self.done
-        print("\r [{:04}/{:04}] - {} - {} - Getting EC for {:12s} ".format(self.done, self.total,
+        print("\r [{:04}/{:04}] - {} - {} - Getting EC for {:40s} ".format(self.done, self.total,
             now - self.start_time, avg, gene), end="")
 
 class WorkerUniprot2Arach(threading.Thread):
@@ -59,13 +56,46 @@ class WorkerUniprot2Arach(threading.Thread):
     def run(self):
         my_conn = sqlite3.connect(DATABASE)
         my_cursor = my_conn.cursor()
-        row = ""
+        row = get_next_query_arach()
         while row is not None:
-            row = get_next_query_arach()
-            PROGRESS.update(row[1])
             idx = get_arachindex_from_uniprot(row[1])
+            WRITER_LOCK.acquire()
+            PROGRESS.update(row[1])
             if idx is not None:
-                my_cursor.execute("UPDATE BlastDbase SET ArachnoserverIndex = ? WHERE TrinityID = ? AND DatabaseSource != 'arachnoserver.pep.fa';", (idx, row[0]))
+                try:
+                    my_cursor.execute("UPDATE BlastDbase SET ArachnoserverIndex = ? WHERE TrinityID = ? AND DatabaseSource != 'arachnoserver.pep.fa';", (idx, row[0]))
+                    my_conn.commit()
+                except sqlite3.OperationalError:
+                    print("[Thread %d] Error writing to database. Putting row back to worktray" % threading.get_ident())
+                    ARACH_QUERY_LOCK.acquire()
+                    ARACH_INDEX_QUERIES.append(row)
+                    ARACH_QUERY_LOCK.release()
+                    my_conn.rollback()
+            WRITER_LOCK.release()
+            row = get_next_query_arach()
+        my_conn.commit()
+
+class WrokerArachClean(threading.Thread):
+    """ Speedup the work of searching Uniprot for Arachnoserver references
+    """
+    def __init__(self):
+        threading.Thread.__init__(self)
+
+    def run(self):
+        my_conn = sqlite3.connect(DATABASE)
+        my_cursor = my_conn.cursor()
+        row = get_next_query_arach()
+        while row is not None:
+            result = clean_arachnoserver_row(row, my_cursor)
+            if result:
+                PROGRESS.update(row[1])
+            else:
+                print("[Thread %d] Error writing to database. Putting row back to worktray" % threading.get_ident())
+                ARACH_QUERY_LOCK.acquire()
+                ARACH_INDEX_QUERIES.append(row)
+                ARACH_QUERY_LOCK.release()
+            row = get_next_query_arach()        
+        my_conn.commit()
 
 ############################################### FUNCTIONS
 def get_next_query_arach():
@@ -167,95 +197,118 @@ def clean_toxprot_accession():
             print(colorama.Fore.YELLOW + "Strange ROW:" + colorama.Style.RESET_ALL, row)
     toxprot_to_query.close()
 
-def has_arachnoserver_column():
+def add_arachnoserver_column():
     """ Verifies if ArachnoserverIndex columns has been created """
     for r in CURSOR.execute('pragma table_info(BlastDbase)'):
         if r[1] == 'ArachnoserverIndex':
             return True
+    CURSOR.execute("ALTER TABLE BlastDbase ADD COLUMN ArachnoserverIndex TEXT;")    
     return False
 
-def has_arachnoserver_table():
+def add_arachnoserver_table():
     """ Verifies if ArachnoserverReference table has been created """
     CURSOR.execute('SELECT name FROM sqlite_master WHERE type="table" AND name="ArachnoserverReference";')
     if CURSOR.fetchone() is not None:
         return True
+    create_table = """
+        CREATE TABLE "ArachnoserverReference" (
+        "Index"	INTEGER,
+        "Name"	TEXT,
+        PRIMARY KEY("Index")
+    );
+    """
+    CURSOR.execute(create_table)
     return False
 
-def clean_arachnoserver():
-    """ Cleans up Arachnoserver index entries"""
-    if not has_arachnoserver_column():
-        CURSOR.execute("ALTER TABLE BlastDbase ADD COLUMN ArachnoserverIndex TEXT;")
-    if not has_arachnoserver_table():
-        create_table = """
-            CREATE TABLE "ArachnoserverReference" (
-            "Index"	INTEGER,
-            "Name"	TEXT,
-            PRIMARY KEY("Index")
-        );
-        """
-        CURSOR.execute(create_table)
-    ALL_ARACHNOSERVER = """
-        SELECT
-            DISTINCT(BlastDbase.TrinityID),
-            BlastDbase.UniprotSearchString,
-            BlastDbase.FullAccession,
-            BlastDbase.DatabaseSource
-        FROM
-            BlastDbase
-        WHERE
-            BlastDbase.DatabaseSource = "arachnoserver.pep.fa";
-    """
-    for row in CONN.cursor().execute(ALL_ARACHNOSERVER):
-        row_info = row[1].split('|')
-        if len(row_info) == 3:
-            row_info[0] = row_info[0].replace('as:', "")
-            if(row_info[1].startswith('sp:')):
-                row_info[1] = row_info[1].replace('sp:', '')
-                name = get_uniprot_number(row_info[1])
-                CURSOR.execute("UPDATE BlastDbase SET FullAccession = ?, UniprotSearchString = ?, ArachnoserverIndex = ? WHERE TrinityID = ? AND DatabaseSource = 'arachnoserver.pep.fa';",
-                (name, name, row_info[2], row[0]))
-                try:
-                    CURSOR.execute("INSERT INTO ArachnoserverReference('Index', 'Name') VALUES (?,?);", (int(row_info[2]), row_info[0]))
-                except sqlite3.IntegrityError:
-                    pass # Entry already there
-            else:
-                CURSOR.execute("UPDATE BlastDbase SET FullAccession = ?, UniprotSearchString = ?, ArachnoserverIndex = ? WHERE TrinityID = ? AND DatabaseSource = 'arachnoserver.pep.fa';",
-                (None, None, row_info[2], row[0]))
-                try:
-                    CURSOR.execute("INSERT INTO ArachnoserverReference('Index', 'Name') VALUES (?,?);", (int(row_info[2]), row_info[0]))
-                except sqlite3.IntegrityError:
-                    pass
-        elif len(row_info) == 2:
-            row_info[0] = row_info[0].replace("as:", "")
-            name = get_uniprot_number(row_info[0])
-            if name is not None:
-                CURSOR.execute("UPDATE BlastDbase SET FullAccession = ?, UniprotSearchString = ?, ArachnoserverIndex = ? WHERE TrinityID = ? AND DatabaseSource = 'arachnoserver.pep.fa';",
-                (name, name, row_info[1], row[0]))
-                try:
-                    CURSOR.execute("INSERT INTO ArachnoserverReference('Index', 'Name') VALUES (?,?);", (int(row_info[1]), get_arachnoserver_name(row_info[1])))
-                except sqlite3.IntegrityError:
-                    pass # Entry already there
-            else:
-                CURSOR.execute("UPDATE BlastDbase SET FullAccession = ?, UniprotSearchString = ?, ArachnoserverIndex = ? WHERE TrinityID = ? AND DatabaseSource = 'arachnoserver.pep.fa';",
-                (None, None, row_info[1], row[0]))
-                try:
-                    CURSOR.execute("INSERT INTO ArachnoserverReference('Index', 'Name') VALUES (?,?);", (int(row_info[1]), row_info[0]))
-                except sqlite3.IntegrityError:
-                    pass # Entry already there
-        else:
-            row_info[0] = row_info[0].replace('as:', '')
-            idx = get_arachnoserver_index(row_info[0])
-            CURSOR.execute("UPDATE BlastDbase SET FullAccession = ?, UniprotSearchString = ?, ArachnoserverIndex = ? WHERE TrinityID = ? AND DatabaseSource = 'arachnoserver.pep.fa';",
-                (None, None, idx, row[0]))
-            try:
-                CURSOR.execute("INSERT INTO ArachnoserverReference('Index', 'Name') VALUES (?,?);", (int(idx), row_info[0]))
-            except sqlite3.IntegrityError:
-                pass # Entry already there
+def write_to_database(cursor, query, args):
+    """ Writes to the database. With mutual exclusion."""
+    WRITER_LOCK.acquire()
+    try:
+        cursor.execute(query, args)
+        cursor.connection.commit()
+    except sqlite3.IntegrityError:
+        # Entry probably already there
+        cursor.connection.commit()
+    except sqlite3.OperationalError:
+        cursor.connection.rollback()
+        WRITER_LOCK.release()
+        return False
+    WRITER_LOCK.release()
+    return True
 
+def clean_arachnoserver_row(row, cursor):
+    """ Given a row from arachnoserver, cleans it """
+    row_info = row[1].split('|')
+    if len(row_info) == 3:
+        row_info[0] = row_info[0].replace('as:', "")
+        if(row_info[1].startswith('sp:')):
+            row_info[1] = row_info[1].replace('sp:', '')
+            name = get_uniprot_number(row_info[1])
+            ret = write_to_database(
+                cursor,
+                "UPDATE BlastDbase SET FullAccession = ?, UniprotSearchString = ?, ArachnoserverIndex = ? WHERE TrinityID = ? AND DatabaseSource = 'arachnoserver.pep.fa';",
+                (name, name, row_info[2], row[0]))
+            ret = write_to_database(
+                cursor,
+                "INSERT INTO ArachnoserverReference('Index', 'Name') VALUES (?,?);",
+                (int(row_info[2]), row_info[0])
+            )
+        else:
+            ret = write_to_database(
+                cursor,
+                "UPDATE BlastDbase SET FullAccession = ?, UniprotSearchString = ?, ArachnoserverIndex = ? WHERE TrinityID = ? AND DatabaseSource = 'arachnoserver.pep.fa';",
+                (None, None, row_info[2], row[0])
+            )
+            ret = write_to_database(
+                cursor,
+                "INSERT INTO ArachnoserverReference('Index', 'Name') VALUES (?,?);",
+                (int(row_info[2]), row_info[0])
+            )
+    elif len(row_info) == 2:
+        row_info[0] = row_info[0].replace("as:", "")
+        name = get_uniprot_number(row_info[0])
+        if name is not None:
+            ret = write_to_database(
+                cursor,
+                "UPDATE BlastDbase SET FullAccession = ?, UniprotSearchString = ?, ArachnoserverIndex = ? WHERE TrinityID = ? AND DatabaseSource = 'arachnoserver.pep.fa';",
+                (name, name, row_info[1], row[0])
+            )
+            ret = write_to_database(
+                cursor,
+                "INSERT INTO ArachnoserverReference('Index', 'Name') VALUES (?,?);",
+                (int(row_info[1]), get_arachnoserver_name(row_info[1]))
+            )
+        else:
+            ret = write_to_database(
+                cursor,
+                "UPDATE BlastDbase SET FullAccession = ?, UniprotSearchString = ?, ArachnoserverIndex = ? WHERE TrinityID = ? AND DatabaseSource = 'arachnoserver.pep.fa';",
+                (None, None, row_info[1], row[0])
+            )
+            ret = write_to_database(
+                cursor,
+                "INSERT INTO ArachnoserverReference('Index', 'Name') VALUES (?,?);",
+                (int(row_info[1]), row_info[0])
+            )
+    else:
+        row_info[0] = row_info[0].replace('as:', '')
+        idx = get_arachnoserver_index(row_info[0])
+        ret = write_to_database(
+            cursor,
+            "UPDATE BlastDbase SET FullAccession = ?, UniprotSearchString = ?, ArachnoserverIndex = ? WHERE TrinityID = ? AND DatabaseSource = 'arachnoserver.pep.fa';",
+            (None, None, idx, row[0])
+        )
+        ret = write_to_database(
+            cursor,
+            "INSERT INTO ArachnoserverReference('Index', 'Name') VALUES (?,?);",
+            (int(idx), row_info[0])
+        )
+    return ret
 ######################################################################### MAIN
 PROGRESS = ProgressBar()
 if __name__ == "__main__":
+    # Cleaning Warnings
     try:
+        print("==> Cleaning Warnings")
         clean_warns()
         CONN.commit()
         print(colorama.Fore.GREEN, "Cleaning Warnings successful.", colorama.Style.RESET_ALL)
@@ -263,7 +316,9 @@ if __name__ == "__main__":
         CONN.rollback()
         print(colorama.Fore.RED, "Cleaning Warnings created an error. Rolled back.", colorama.Style.RESET_ALL)
         print(exp)
+    # Cleaning toxprot
     try:
+        print("==> Cleaning Toxprot")
         clean_toxprot_accession()
         CONN.commit()
         print(colorama.Fore.GREEN, "Cleaning toxprot successful.", colorama.Style.RESET_ALL)
@@ -271,15 +326,42 @@ if __name__ == "__main__":
         CONN.rollback()
         print(colorama.Fore.RED, "Cleaning toxprot created an error. Rolled back.", colorama.Style.RESET_ALL)
         print(exp)
+    # Cleaning arachnoserver
     try:
-        clean_arachnoserver()
+        print("==> Cleaning Arachnoserver")
+        add_arachnoserver_column()
+        add_arachnoserver_table()
+        ALL_ARACHS = """
+            SELECT
+                DISTINCT(BlastDbase.TrinityID),
+                BlastDbase.UniprotSearchString,
+                BlastDbase.FullAccession,
+                BlastDbase.DatabaseSource
+            FROM
+                BlastDbase
+            WHERE
+                BlastDbase.DatabaseSource = "arachnoserver.pep.fa";
+        """
+        CURSOR.execute(ALL_ARACHS)
+        ARACH_INDEX_QUERIES = CURSOR.fetchall()
+        PROGRESS.start(len(ARACH_INDEX_QUERIES))
+        CONN.commit()
+        workers = []
+        for w in range(NUMBER_OF_WORKERS):
+            w = WrokerArachClean()
+            w.start()
+            workers.append(w)
+        for w in workers:
+            w.join()
         CONN.commit()
         print(colorama.Fore.GREEN, "Cleaning arachnoserver successful.", colorama.Style.RESET_ALL)
     except sqlite3.OperationalError as exp:
         CONN.rollback()
         print(colorama.Fore.RED, "Cleaning arachnoserver created an error. Rolled back.", colorama.Style.RESET_ALL)
         print(exp)
-    all_not_arch = """
+    # Get Arachnoserver reference for Swissprot and Toxprot entries
+    print("==> Getting Arachnoserver references")
+    ALL_NOT_ARACHS = """
         SELECT
             distinct(BlastDbase.TrinityID),
             BlastDbase.UniprotSearchString
@@ -289,7 +371,7 @@ if __name__ == "__main__":
             BlastDbase.DatabaseSource = 'toxprot' OR
             BlastDbase.DatabaseSource = 'Swissprot';
     """
-    CURSOR.execute(all_not_arch)
+    CURSOR.execute(ALL_NOT_ARACHS)
     ARACH_INDEX_QUERIES = CURSOR.fetchall()
     PROGRESS.start(len(ARACH_INDEX_QUERIES))
     workers = []

@@ -25,6 +25,7 @@ CURSOR = CONN.cursor()
 
 EC_QUERIES = []
 EC_QUERIES_LOCK = threading.Lock()
+WRITERS_LOCK = threading.Lock()
 
 ########################################################### CLASSES
 class ProgressBar():
@@ -58,10 +59,12 @@ class WorkerGetEC(threading.Thread):
         row = ""
         while row is not None:
             row = get_next_query()
-            PROGRESS.update(row[0])
             idx = get_protein_EC(row[0])
+            WRITERS_LOCK.acquire()
+            PROGRESS.update(row[0])
             if idx is not None:
                 my_cursor.execute("INSERT INTO UniprotIndex('Accession', 'LinkId', 'AttributeType') VALUES (?,?,F);", (row[0], idx))
+            WRITERS_LOCK.release()
 
 ########################################################### FUNCTIONS
 def get_protein_EC(gene, retry=0):
