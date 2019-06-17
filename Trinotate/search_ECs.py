@@ -56,16 +56,22 @@ class WorkerGetEC(threading.Thread):
     def run(self):
         my_conn = sqlite3.connect(DATABASE)
         my_cursor = my_conn.cursor()
-        row = ""
+        row = get_next_query()
         while row is not None:
-            row = get_next_query()
             idx = get_protein_EC(row[0])
             WRITERS_LOCK.acquire()
             PROGRESS.update(row[0])
             if idx is not None:
-                my_cursor.execute("INSERT INTO UniprotIndex('Accession', 'LinkId', 'AttributeType') VALUES (?,?,F);", (row[0], idx))
+                try:
+                    my_cursor.execute("INSERT INTO UniprotIndex('Accession', 'LinkId', 'AttributeType') VALUES (?,?,F);", (row[0], idx))
+                    my_conn.commit()
+                except sqlite3.OperationalError:
+                    EC_QUERIES_LOCK.acquire()
+                    EC_QUERIES.append(row)
+                    EC_QUERIES_LOCK.release()
+                    my_conn.rollback()
             WRITERS_LOCK.release()
-
+            row = get_next_query()
 ########################################################### FUNCTIONS
 def get_protein_EC(gene, retry=0):
     """ Queries Uniprot for a gene entry and extracts the EC, if any.
