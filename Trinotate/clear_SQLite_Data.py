@@ -57,14 +57,17 @@ class WorkerUniprot2Arach(threading.Thread):
         threading.Thread.__init__(self)
 
     def run(self):
+        my_conn = sqlite3.connect(DATABASE)
+        my_cursor = my_conn.cursor()
         row = ""
         while row is not None:
             row = get_next_query_arach()
             PROGRESS.update(row[1])
             idx = get_arachindex_from_uniprot(row[1])
             if idx is not None:
-                CURSOR.execute("UPDATE BlastDbase SET ArachnoserverIndex = ? WHERE TrinityID = ? AND DatabaseSource != 'arachnoserver.pep.fa';", (idx, row[0]))
+                my_cursor.execute("UPDATE BlastDbase SET ArachnoserverIndex = ? WHERE TrinityID = ? AND DatabaseSource != 'arachnoserver.pep.fa';", (idx, row[0]))
 
+############################################### FUNCTIONS
 def get_next_query_arach():
     """ Gets the next Uniprot index to be searched for AS reference.
         Returns None if there's no more work
@@ -298,4 +301,4 @@ if __name__ == "__main__":
     for w in workers:
         w.join()
     CONN.commit()
-    CONN.close()   
+    CONN.close()
