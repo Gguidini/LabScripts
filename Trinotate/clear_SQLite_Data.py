@@ -44,7 +44,7 @@ class ProgressBar():
         self.done += 1
         now = datetime.datetime.now()
         avg = (now - self.start_time)/self.done
-        print("\r [{:04}/{:04}] - {} - {} - Getting EC for {:40s} ".format(self.done, self.total,
+        print("\r [{:04}/{:04}] - {} - {} - {:40s} ".format(self.done, self.total,
             now - self.start_time, avg, gene), end="")
 
 class WorkerUniprot2Arach(threading.Thread):
@@ -58,7 +58,7 @@ class WorkerUniprot2Arach(threading.Thread):
         my_cursor = my_conn.cursor()
         row = get_next_query_arach()
         while row is not None:
-            idx = get_arachindex_from_uniprot(row[1])
+            idx = str(get_arachindex_from_uniprot(row[1]))
             WRITER_LOCK.acquire()
             PROGRESS.update(row[1])
             if idx is not None:
@@ -74,6 +74,7 @@ class WorkerUniprot2Arach(threading.Thread):
             WRITER_LOCK.release()
             row = get_next_query_arach()
         my_conn.commit()
+        my_conn.close()
 
 class WrokerArachClean(threading.Thread):
     """ Speedup the work of searching Uniprot for Arachnoserver references
@@ -96,6 +97,7 @@ class WrokerArachClean(threading.Thread):
                 ARACH_QUERY_LOCK.release()
             row = get_next_query_arach()        
         my_conn.commit()
+        my_conn.close()
 
 ############################################### FUNCTIONS
 def get_next_query_arach():
@@ -133,7 +135,7 @@ def get_arachindex_from_uniprot(gene, retry=0):
             info = SeqIO.read(handle, "swiss")
             for db in info.dbxrefs:
                 if db.startswith('ArachnoServer'):
-                    return db[14:]
+                    return int(db[16:])
             return None
     except:
         if(retry < 10):
