@@ -74,8 +74,10 @@ class WorkerGetEC(threading.Thread):
                         EC_QUERIES.append(row)
                         EC_QUERIES_LOCK.release()
                         my_conn.rollback()
+                else:
+                    PROGRESS.update(row[0])
                 WRITERS_LOCK.release()
-                row = get_next_query()
+            row = get_next_query()
         my_conn.close()
 ########################################################### FUNCTIONS
 def get_protein_EC(gene, retry=0):
