@@ -57,12 +57,12 @@ def gen_files(species):
         info_file = open(species + "/infos/" + prot_id + ".pf", 'w')
 
         # General file
-        text = "ID  " + prot_id + "\n"
-        text += "NAME  " + name + "\n"
-        text += "TYPE  :CONTIG\n"
-        text += "CIRCULAR?  N\n"
-        text += "SEQ-FILE    " + species + "/fastas/" + prot_id + ".fsa\n"
-        text += "ANNOT-FILE    " + species + "/infos/" + prot_id + ".pf\n"
+        text = "ID\t" + prot_id + "\n"
+        text += "NAME\t" + name + "\n"
+        text += "TYPE\t:CONTIG\n"
+        text += "CIRCULAR?\tN\n"
+        text += "SEQ-FILE\t" + species + "/fastas/" + prot_id + ".fsa\n"
+        text += "ANNOT-FILE\t" + species + "/infos/" + prot_id + ".pf\n"
         text += "//\n"
         genetic_elements.write(text)
 
@@ -72,14 +72,15 @@ def gen_files(species):
         fasta_file.close()
 
         # info file
-        text = "ID  " + prot_id + "\n"
-        text += "NAME  " + name + "\n"
-        text += "PRODUCT-TYPE  P\n"
-        text += "STARTBASE  1\n"
-        text += "ENDBASE  " + str(len(seq)) + "\n"
-        text += "EC  " + ec + "\n"
+        text = "ID\t" + prot_id + "\n"
+        text += "NAME\t" + acc + "\n"
+        text += "PRODUCT-TYPE\tP\n"
+        text += "STARTBASE\t1\n"
+        text += "ENDBASE\t" + str(len(seq)) + "\n"
+        text += "EC\t" + ec + "\n"
+        text += "FUNCTION\t" + name + "\n"
         if go is not None:
-            text += "DBLINK  " + go + '\n'
+            text += "DBLINK\t" + go + '\n'
         text += "//\n"
         info_file.write(text)
         info_file.close()
